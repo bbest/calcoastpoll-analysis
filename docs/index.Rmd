@@ -1,28 +1,102 @@
 ---
 title: "Analysis"
-output: html_document
+output:
+  html_document:
+    code_folding: hide
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
 ```
 
-## R Markdown
+## Download
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+```{r}
+library(here)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+# paths
+url <- "https://www.dropbox.com/sh/z289k8mztx326lf/AAArsgbv3pUHxaM1p_ygslUsa?dl=1"
+dir_data <- here("data") 
+zip      <- file.path(dir_data, "ESRM_DataViz.zip")
+xlsx     <- file.path(dir_data, "CoastalOpinionPoll_thru2017.xlsx")
 
-```{r cars}
-summary(cars)
+if (!file.exists(xlsx)){
+  # download and unzip
+  dir.create(dir_data)
+  download.file(url, zip)
+  unzip(zip, exdir = dir_data)
+  unlink(zip)
+}
 ```
 
-## Including Plots
+## Read
 
-You can also embed plots, for example:
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+library(readxl)
+library(tidyverse)
+library(knitr)
+
+n_max <- 12891-7
+d <- read_excel(
+  xlsx, 
+  n_max = n_max, guess_max = n_max, skip = 7) %>% 
+  select(
+    year     = "..9",
+    answered = answered..157, 
+    yes      = yes..158, 
+    no       = no..159, 
+    unsure   = unsure..160) %>% 
+  filter(
+    !is.na(year),
+    answered == 1)
+
+d %>% 
+  head() %>% 
+  kable()
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Summarize
+
+```{r}
+library(DT)
+
+d_s <- d %>% 
+  mutate(
+    year = as.integer(year)) %>% 
+  group_by(year) %>% 
+  summarise(
+    yes    = sum(yes),
+    no     = sum(no),
+    unsure = sum(unsure)) %>% 
+  gather(
+    answer, sum, -year) %>% 
+  arrange(year, answer)
+
+datatable(d_s)
+```
+
+## Plot, static
+
+```{r}
+library(RColorBrewer)
+
+# Stacked Percent
+rdylgn <- brewer.pal(5,"RdYlGn")
+
+g <- ggplot(d_s, aes(fill=answer, y=sum, x=year)) + 
+  geom_bar( stat="identity", position="fill") +
+  scale_fill_manual(values=c(rdylgn[1], "grey50", rdylgn[5])) +
+  ylab("%") +
+  theme_minimal()
+g
+```
+
+## Plot, dynamic
+
+```{r}
+library(plotly)
+
+ggplotly(g)
+```
+
